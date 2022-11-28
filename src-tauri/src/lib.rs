@@ -6,20 +6,20 @@
 use libc::c_char;
 use std::{
     ffi::{CStr, CString},
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
-use tauri::State;
+use tauri::{Manager, State};
 
 type HostCallback = unsafe extern "C" fn(s: *const c_char) -> *mut c_char;
 
 struct AppState {
-    host_callback: Arc<Mutex<HostCallback>>,
+    host_callback: Mutex<HostCallback>,
 }
 
 impl AppState {
     fn new(cb: HostCallback) -> Self {
         AppState {
-            host_callback: Arc::new(Mutex::new(cb)),
+            host_callback: Mutex::new(cb),
         }
     }
 }
@@ -53,6 +53,22 @@ pub extern "C" fn run_tauri(cb: HostCallback) {
     tauri::Builder::default()
         .manage(AppState::new(cb))
         .invoke_handler(tauri::generate_handler![command_run])
+        .on_window_event(|event| match event.event() {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                let window = event.window();
+                let label = window.label();
+                if label == "main" {
+                    api.prevent_close();
+                    window
+                        .app_handle()
+                        .get_window(&label)
+                        .unwrap()
+                        .hide()
+                        .unwrap();
+                }
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!("./tauri.conf.json"))
         .expect("error while running tauri application");
 }
